@@ -14,4 +14,4 @@ export const PLUGIN_ID = 'dsh-k-bloom-theme'
 
 /** 当前装的版本 —— 必须与 package.json 的 version 一致（本仓库没有自动同步脚本，
  *  发版时两处一起改；`npm run build` 会把包进 lib/client.js 的横幅）。 */
-export const PLUGIN_VERSION = '0.19.0'
+export const PLUGIN_VERSION = '0.19.1'

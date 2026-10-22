@@ -349,6 +349,47 @@ div[class*="_composer"] div[class*="_card"]:focus-within {
     0 0 0 2px var(--bloom-glow);
 }
 
+/* ═══ 空态「点我选工作区」的虚线环：让位给宿主，避免两层轮廓 ═══════════
+ *
+ * DSH 的 InputBar 在**未选择工作区**时给卡片多挂一个 _cardWorkspaceTrigger，
+ * 它用 ::after（inset:0 + border:1px dashed + border-radius:--dsw-radius-panel）
+ * 画一圈虚线，提示「点这里选工作区」：
+ *   .RlGAzG_cardWorkspaceTrigger:after{content:'';border-radius:var(--dsw-radius-panel);
+ *     color:var(--dsw-alias-border-l4);border:1px dashed;position:absolute;inset:0}
+ *   （@deepseek-ai/dsh-client-ui-conversation/lib/client.js）
+ *
+ * 问题：bloom 给同一张卡自己也画了 border:1px solid + border-radius:16px。
+ * 直线段上两圈只差 1px，肉眼看不出；但宿主虚线用的是 --dsw-radius-panel=28px，
+ * 比 bloom 的 16px 大一圈，两个半径在转角处错开 (28-16)×(1-1/√2)≈3.5px，
+ * 加上 1px 内缩 —— 看上去就是「输入框有两层轮廓」（owner 实拍反馈）。
+ *
+ * 修法：这个状态让宿主那圈虚线独自承担边界（它是真的功能提示，不能删），
+ * bloom 的实线让位；再把虚线环的圆角与位置对齐到卡片自己，使两者严格同心。
+ *   · border-color 置 transparent 而不是 border-width:0 —— 后者会改变 2px 布局。
+ *   · inset:-1px 抵消那 1px 透明边框，虚线正好落在 bloom 描边原来的位置。
+ *   · border-radius:inherit 让虚线跟随卡片的 16px，转角不再豁口。
+ *
+ * ⚠️ 特异性必须补到 (0,4,3) / 聚焦态 (0,5,3)，靠 [data-composer-card] 这一级：
+ *   glass.css 的 body[data-bloom-variant] … div[class*="_card"]:focus-within
+ *   是 (0,4,3)，且 glass.css 在本文件**之后**注入 —— 基础规则 (0,4,3) 与它同权
+ *   时它赢，所以聚焦态还要再加一条 :focus-within 把自己顶到 (0,5,3)。
+ *   少了这个属性，点进输入框的瞬间实线就会回来、两层轮廓复发。
+ *   [data-composer-card] 是 DSH 自己发的语义属性（与卡片同级 JSX 上
+ *   "data-composer-card": true），符合本文件「用宿主语义属性、不用 hash 类名」
+ *   的既定做法，不会随 hash 改名失效。
+ *   而「执行中流光环」:has([class*="_pending"])::after 与本条 ::after 同为
+ *   (0,4,3)、但它在本文件中位置更靠后，所以生成中的 conic 光环依然赢、
+ *   不受影响。 */
+body[data-bloom-variant] div[class*="_composer"] div[class*="_cardWorkspaceTrigger"][data-composer-card],
+body[data-bloom-variant] div[class*="_composer"] div[class*="_cardWorkspaceTrigger"][data-composer-card]:hover,
+body[data-bloom-variant] div[class*="_composer"] div[class*="_cardWorkspaceTrigger"][data-composer-card]:focus-within {
+  border-color: transparent;
+}
+body[data-bloom-variant] div[class*="_composer"] div[class*="_cardWorkspaceTrigger"][data-composer-card]::after {
+  inset: -1px;
+  border-radius: inherit;
+}
+
 /* 消息气泡：柔和圆角 + 近距阴影，脱离"贴在背景上"的平面感。
    限定 div：DSH 的全局 Tooltip 是 span[class*="_bubble"]（见 glass.ts 同名注释），
    不能吃到气泡的圆角/阴影/入场动画 —— 尤其动画：带 !important 的 bloom-fade-up
