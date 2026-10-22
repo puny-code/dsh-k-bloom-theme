@@ -1,0 +1,72 @@
+name: release
+
+# 打 tag 即发版，产物就是 DSH 安装用的 tarball：
+#
+#   git tag v0.18.0
+#   git push origin v0.18.0
+#
+# 生成的直链：
+#   https://github.com/puny-code/dsh-k-bloom-theme/releases/download/v<version>/dsh-k-bloom-theme-<version>.tgz
+#
+# 该链接可直接用于桌面端「插件管理 → 从 URL 安装」，或
+#   dsh plugin --profile <name> add <url>
+#
+# 注意：lib/ 是提交进仓库的产物（CI 不做 npm install / 构建），
+# 发版前本地必须先跑 `npm run build` 再提交。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Pack
+        id: pack
+        run: |
+          set -euo pipefail
+          file="$(npm pack --silent | tail -n1)"
+          if [ -z "$file" ] || [ ! -f "$file" ]; then
+            file="$(ls -1t ./*.tgz | head -n1)"
+          fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Checksums
+        run: sha256sum ./*.tgz > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          FILE: ${{ steps.pack.outputs.file }}
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber "$FILE" SHA256SUMS.txt
+          else
+            gh release create "$TAG" \
+              --title "dsh-k-bloom-theme $VERSION" \
+              --generate-notes \
+              "$FILE" SHA256SUMS.txt
+          fi
