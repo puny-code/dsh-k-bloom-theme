@@ -55,7 +55,11 @@ body[data-bloom-variant="aurora"]::before {
   filter: blur(76px);
   opacity: 0.2;
   transform: translate3d(0, 0, 0);
-  animation: bloom-aurora-drift 28s ease-in-out infinite alternate;
+  /* steps(56, end)：动画值每 28s/56 = 0.5s 才变一次，这层（≈3460×1940 的
+     76px 模糊）的重光栅化从 60 次/秒降到约 2 次/秒，丝带的内部流动完整保留
+     （每档 background-position 跳动 30~44px，在 76px 模糊 + 20% 不透明度的
+     色带上不可辨）。关键帧与 will-change 都不动。 */
+  animation: bloom-aurora-drift 28s steps(56, end) infinite alternate;
   will-change: transform, background-position;
 }
 @keyframes bloom-aurora-drift {
@@ -398,43 +402,40 @@ body[data-ds-dark-theme] :is([class*="_tableScroll"], [class*="_tablePane"]) tbo
   background: rgba(var(--bloom-morandi), 0.04);
 }
 
-/* ═══ v0.15 流光反应层：body::after 鼠标跟随光斑 ═════════════════════════
-   这是 0.15 唯一的「亮点」——你刷新页面、在主区里晃鼠标，背景会有一道柔光
-   跟着你走。不需要 hover 触发、不需要点什么东西，常驻、安静、live。
-
-   只在 aurora + cinnabar 两套本身有「色」的变体里启用 —— 它 8 套根本不会渲染
-   这道光（owner 反复强调「不要让花里胡哨覆盖原本的气质」：mist/petal/ripple 等
-   6 套清淡氛围应该保持纯静，光斑只属于那两个「本身有戏剧张力」的色）。
-
-   设计约束：
-   · 透明度 ≤ 0.4（v0.12.1 owner 砍 saturate 那次的教训：aurora 流光只要太重就脏）
-   · 不用 saturate() / contrast() / backdrop-filter —— 0 依赖、纯 GPU 层
-   · 不用 isolation / transform / perspective / contain —— v0.8 backdrop-filter 那次的
-     教训：这些属性会让 fixed 后代变成相对自己的 containing block
-   · 不进 \`--bloom-accent\`（气质轨），只动 \`--bloom-aurora-stream-1\`（v0.9 已经
-     写好的 motion 色，色相跟着变体走）
-   · prefers-reduced-motion 下隐藏（尊重系统设置）
-   · 用 body 自身而不是 _root 或 main，因为 DSH 重渲染时这两个会被替换；
-     body 是稳定的宿主，跟 sidebar 那种 fixed 一样是相对视口 */
-body[data-bloom-variant="aurora"]::after,
-body[data-bloom-variant="cinnabar"]::after {
-  content: '';
+/* ═══ v0.15 流光反应层：鼠标跟随光斑（v0.19 由伪元素改为真实元素）══════════
+   为什么不再是 body::after：
+   · 伪元素是面板级层，一个 inset:0 的 fixed 伪元素 + radial-gradient(at var(--x)
+     var(--y))，意味着指针每动一像素就要重绘整个视口；而坐标写在 documentElement
+     上，会让整棵树样式失效重算。
+   · 换成 720×720 的真实元素、渐变中心固定在盒中心，位移只靠 transform：
+     transform 走合成器，指针移动不再产生重绘或布局。
+   几何等价（已实测）：旧版半径 360px、260px 处已透明；新版 720px 盒子 +
+   closest-side 圆（半径 360px）中心随盒移动 —— 同样位置、同样半径、同样色标，
+   写 translate3d(-32px,-2px,0) 后圆心精确落在 (600,400.5)。
+   定位：元素中心默认对准视口中心，JS 写入的 translate3d 是「相对视口中心」的 px。 */
+body > .dsh-bloom-cursor {
   position: fixed;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  width: 720px;
+  height: 720px;
+  margin: -360px 0 0 -360px;
   z-index: -1;
   pointer-events: none;
+  display: none;
   background: radial-gradient(
-    360px 360px at var(--bloom-cursor-x, 50%) var(--bloom-cursor-y, 50%),
+    closest-side circle at 50% 50%,
     color-mix(in oklch, var(--bloom-aurora-stream-1), transparent 65%),
     transparent 72%
   );
   opacity: 0.95;
-  /* GPU 合成层 —— transform / opacity 不重绘文本 */
   transform: translate3d(0, 0, 0);
-  will-change: background;
+  will-change: transform;
 }
+/* 只在这两个「本身有色」的变体里渲染（与旧版行为一致：其余 8 套保持纯静） */
+body[data-bloom-variant="aurora"] > .dsh-bloom-cursor,
+body[data-bloom-variant="cinnabar"] > .dsh-bloom-cursor { display: block; }
 @media (prefers-reduced-motion: reduce) {
-  body[data-bloom-variant="aurora"]::after,
-  body[data-bloom-variant="cinnabar"]::after { display: none; }
+  body > .dsh-bloom-cursor { display: none !important; }
 }
 `

@@ -42,31 +42,48 @@ import { checkUpdate } from './version.js'
 /**
  * 鼠标跟随光斑（v0.15 唯一的亮点）。
  *
- * 性能：mousemove 每秒可能触发 60+ 次，每次写两个 CSS var（CPU 几乎为零，
- * GPU 用 background-position 插值，文本不重绘）。
- * 退出时（变体切换到非 aurora/cinnabar / 切走标签页）解绑监听 —— 不留幽灵。
+ * 性能（v0.19）：光斑从 `body::after` 全视口伪元素改成 720×720 的真实元素，
+ * 渐变中心固定在盒中心，位移只写 `el.style.transform`：
+ *   · 不再每帧重绘整个视口（旧版约 2M px/次）；
+ *   · 不再往 documentElement 写可继承的自定义属性（旧版每帧让整棵树样式失效）。
+ * transform 走合成器，指针移动不产生重绘/布局。
+ * 退出时（变体切到非 aurora/cinnabar）元素仍在但 CSS 里 display:none，不留幽灵。
  */
 function watchCursorGlow() {
   if (window.__dshBloomCursorBound__) return
   window.__dshBloomCursorBound__ = true
 
-  let raf = 0
-  const write = (x, y) => {
-    if (raf) return
-    raf = requestAnimationFrame(() => {
-      raf = 0
-      const root = document.documentElement
-      root.style.setProperty('--bloom-cursor-x', `${x * 100}%`)
-      root.style.setProperty('--bloom-cursor-y', `${y * 100}%`)
-    })
-  }
+  const el = document.createElement('div')
+  el.className = 'dsh-bloom-cursor'
+  el.setAttribute('aria-hidden', 'true')
+  document.body.appendChild(el)
 
-  const onMove = (e) => {
-    const v = document.body?.dataset.bloomVariant
-    if (v !== 'aurora' && v !== 'cinnabar') return
-    write(e.clientX / window.innerWidth, e.clientY / window.innerHeight)
+  let raf = 0
+  let cx = window.innerWidth / 2
+  let cy = window.innerHeight / 2
+  const apply = () => {
+    raf = 0
+    // 宿主极少情况下会清空 body（观测不到，但补插是零成本保险）
+    if (!el.isConnected) document.body.appendChild(el)
+    const dx = Math.round(cx - window.innerWidth / 2)
+    const dy = Math.round(cy - window.innerHeight / 2)
+    // 直接写 transform：不经过自定义属性，不触发样式失效传播
+    el.style.transform = 'translate3d(' + dx + 'px,' + dy + 'px,0)'
   }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(apply) }
+
+  const onMove = (e: PointerEvent) => {
+    const v = document.body.dataset.bloomVariant
+    if (v !== 'aurora' && v !== 'cinnabar') return
+    cx = e.clientX
+    cy = e.clientY
+    schedule()
+  }
+  // 旧版存百分比天然跟随视口变化；新版存的是绝对坐标，resize 后用上次坐标重算一次。
+  const onResize = () => schedule()
+
   window.addEventListener('pointermove', onMove, { passive: true })
+  window.addEventListener('resize', onResize, { passive: true })
 }
 
 ;(function() {

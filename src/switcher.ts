@@ -5,7 +5,7 @@
  * 键盘可完整操作（role=radiogroup + aria-checked + 方向键），窄屏隐藏中文名。
  */
 import { OTHER_VARIANTS, VARIANT_LABELS, PALETTE } from './palette.js'
-import { findSwitcherHost, injectCSS, readVariant } from './dom.js'
+import { ensureObserver, findSwitcherHost, injectCSS, onDomMutation, readVariant } from './dom.js'
 import { PLUGIN_ID, PLUGIN_VERSION, STORAGE_KEY } from './meta.js'
 import { checkUpdate, refreshUpdateBadge, renderDshUpdate, checkDshLatest } from './version.js'
 import { SWITCHER_CSS } from './css/switcher.js'
@@ -397,12 +397,17 @@ export function watchSwitcher(variant) {
     document.body.dataset.bloomVariant = document.body.dataset.bloomVariant || variant
     injectSwitcher(readVariant())
   }
-  const obs = new MutationObserver(() => {
+  // v0.19：复用 dom.ts 的单例 observer（rAF 合并，≤60 次/秒）。
+  // 这里只做两次查询 + 幂等重挂，属于「轻量订阅」的适用范围。
+  // 注意 __dshBloomObserver__ 只能由本函数写，ensureObserver() 不碰它 —— 否则会把
+  // watchThinkTags 的 guard 短路掉（那条 guard 用的是另一个 marker）。
+  const obs = ensureObserver()
+  if (!obs) return
+  onDomMutation(() => {
     const el = document.querySelector<HTMLElement>('.dsh-bloom-switcher')
     const host = findSwitcherHost()
     // 节点没了，或宿主已就绪但切换器还浮着 → 重挂
     if (!el || (host && !host.contains(el))) reattach()
   })
-  obs.observe(document.body, { childList: true, subtree: true })
   window.__dshBloomObserver__ = obs
 }

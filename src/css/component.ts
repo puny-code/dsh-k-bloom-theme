@@ -880,10 +880,21 @@ button[class*="_newSession"]:hover,
   to { --bloom-spin: 360deg; }
 }
 
+/* v0.19：idle 的呼吸量化成 16 档阶梯（steps(1, end) 放在动画层，关键帧不变）。
+   每档 5.2s/16 = 325ms 才变一次数值，推给 glass.ts 那圈外晕的 box-shadow
+   重绘从 60 次/秒降到约 3 次/秒；暗色单档最大跨度 4.2pp、亮色 3.15pp，
+   5.2s 周期下等同肉眼分辨极限。
+   ★ 为什么 steps 写在 animation 而不是 keyframe 里：写成 50% 键里的
+     animation-timing-function: steps(1, end) 那种「每段量化」，会让第一个区间
+     没有 quantization，语义和本意不符；写在 animation 层是全局等分，更易核对。
+   ★ 聚焦态**不换 animation-name**（换名 = 新建动画实例 = 相位重置到 0%，
+     实测会让光晕瞬间从 0.85 掉到 0.3，点进输入框「暗一下」）：
+     只把 timing 换成 linear、duration 减半，同一实例继续跑。 */
 body[data-bloom-variant] div[class*="_composer"] div[class*="_card"] {
-  animation: bloom-halo-breathe 5.2s ease-in-out infinite;
+  animation: bloom-halo-breathe 5.2s steps(1, end) infinite;
 }
 body[data-bloom-variant] div[class*="_composer"] div[class*="_card"]:focus-within {
+  animation-timing-function: linear;
   animation-duration: 2.6s;
 }
 
